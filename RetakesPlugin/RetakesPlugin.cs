@@ -380,12 +380,37 @@ public class RetakesPlugin : BasePlugin, IPluginConfig<BaseConfigs>
         }
 
         var fromTeam = player.Team;
+        var wasActiveCount = _gameManager.QueueManager.ActivePlayers.Count;
+        var wasQueuedCount = _gameManager.QueueManager.QueuePlayers.Count;
+        var wasActive = _gameManager.QueueManager.ActivePlayers.Contains(player);
+        var wasQueued = _gameManager.QueueManager.QueuePlayers.Contains(player);
 
         Utils.Logger.LogDebug("Commands", $"[{player.PlayerName}] HandlePlayerJoinedTeam ({source}): {fromTeam} -> {toTeam}");
 
         _gameManager.QueueManager.DebugQueues(true);
         var response = _gameManager.QueueManager.PlayerJoinedTeam(player, fromTeam, toTeam);
         _gameManager.QueueManager.DebugQueues(false);
+
+        var isActive = _gameManager.QueueManager.ActivePlayers.Contains(player);
+        var isQueued = _gameManager.QueueManager.QueuePlayers.Contains(player);
+
+        Utils.Logger.LogInfo("AutoJoin",
+            $"HandlePlayerJoinedTeam source={source} player={player.PlayerName} from={fromTeam} to={toTeam} response={response} wasActive={wasActive} isActive={isActive} wasQueued={wasQueued} isQueued={isQueued} activeCount={_gameManager.QueueManager.ActivePlayers.Count} queueCount={_gameManager.QueueManager.QueuePlayers.Count}");
+
+        if (source == "auto" &&
+            isActive &&
+            toTeam is CsTeam.Terrorist or CsTeam.CounterTerrorist &&
+            player.Team != toTeam)
+        {
+            Utils.Logger.LogInfo("AutoJoin", $"Applying engine team for active autojoin player {player.PlayerName}: {player.Team} -> {toTeam}");
+
+            player.ChangeTeam(toTeam);
+        }
+
+        if (source == "auto" && isActive)
+        {
+            ScheduleAutoJoinRoundRefresh(player.UserId, wasActiveCount, wasQueuedCount);
+        }
 
         if (_gameManager.QueueManager.ActivePlayers.Count == 0)
         {
@@ -396,6 +421,51 @@ public class RetakesPlugin : BasePlugin, IPluginConfig<BaseConfigs>
         }
 
         return response;
+    }
+
+    private void ScheduleAutoJoinRoundRefresh(int? userId, int previousActiveCount, int previousQueuedCount)
+    {
+        AddTimer(0.25f, () =>
+        {
+            if (_gameManager == null)
+            {
+                Utils.Logger.LogWarning("AutoJoin", "Cannot refresh round: game manager missing");
+                return;
+            }
+
+            var gameRules = GameRulesHelper.GetGameRulesOrNull();
+
+            Utils.Logger.LogInfo("AutoJoin",
+                $"Round refresh check userId={userId} warmup={gameRules?.WarmupPeriod} active={_gameManager.QueueManager.ActivePlayers.Count} queue={_gameManager.QueueManager.QueuePlayers.Count} previousActive={previousActiveCount} previousQueue={previousQueuedCount}");
+
+            if (previousActiveCount == 0 && _gameManager.QueueManager.ActivePlayers.Count > 0)
+            {
+                Utils.Logger.LogInfo("AutoJoin", "First active player joined via autojoin, clearing round teams and restarting game");
+
+                _gameManager.QueueManager.ClearRoundTeams();
+                _gameManager.QueueManager.Update();
+
+                Server.ExecuteCommand("mp_warmup_pausetimer 0");
+
+                GameRulesHelper.RestartGame();
+                return;
+            }
+
+            if (_gameManager.QueueManager.ActivePlayers.Count > 0)
+            {
+                var activeWithInvalidTeam = _gameManager.QueueManager.ActivePlayers
+                    .Where(PlayerHelper.IsValid)
+                    .Any(p => p.Team != CsTeam.Terrorist && p.Team != CsTeam.CounterTerrorist);
+
+                if (activeWithInvalidTeam)
+                {
+                    Utils.Logger.LogWarning("AutoJoin", "ActivePlayers contains player without valid T/CT team, restarting game");
+                    _gameManager.QueueManager.ClearRoundTeams();
+                    _gameManager.QueueManager.Update();
+                    GameRulesHelper.RestartGame();
+                }
+            }
+        });
     }
     #endregion
 

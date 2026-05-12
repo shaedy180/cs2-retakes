@@ -71,12 +71,25 @@ public class RoundEventHandlers
             return HookResult.Continue;
         }
 
+        if (_gameManager.QueueManager.ActivePlayers.Count == 0 &&
+            _gameManager.QueueManager.QueuePlayers.Count == 0)
+        {
+            Logger.LogWarning("Round", "Skipping retakes pre-start: no active or queued players");
+            return HookResult.Continue;
+        }
+
         _gameManager.QueueManager.ClearRoundTeams();
 
         Logger.LogDebug("Round", "Updating queues");
         _gameManager.QueueManager.DebugQueues(true);
         _gameManager.QueueManager.Update();
         _gameManager.QueueManager.DebugQueues(false);
+
+        if (_gameManager.QueueManager.ActivePlayers.Count == 0)
+        {
+            Logger.LogWarning("Round", "Skipping retakes pre-start after queue update: no active players");
+            return HookResult.Continue;
+        }
 
         _gameManager.OnRoundPreStart(_lastRoundWinner);
         _gameManager.QueueManager.SetRoundTeams();
@@ -126,6 +139,12 @@ public class RoundEventHandlers
             return HookResult.Continue;
         }
 
+        if (_gameManager.QueueManager.ActivePlayers.Count == 0)
+        {
+            Logger.LogWarning("Round", "Skipping retakes round start: no active players");
+            return HookResult.Continue;
+        }
+
         _breakerManager?.Handle();
         _currentBombsite = _forcedBombsite ?? (_random.Next(0, 2) == 0 ? Bombsite.A : Bombsite.B);
         _gameManager.ResetPlayerScores();
@@ -159,6 +178,12 @@ public class RoundEventHandlers
         }
 
         Logger.LogDebug("Round", $"EnableFallbackAllocation: {_enableFallbackAllocation}");
+
+        if (_gameManager.QueueManager.ActivePlayers.Count == 0)
+        {
+            Logger.LogWarning("Round", "Skipping retakes post-start: no active players");
+            return HookResult.Continue;
+        }
 
         foreach (var player in _gameManager.QueueManager.ActivePlayers.Where(PlayerHelper.IsValid))
         {

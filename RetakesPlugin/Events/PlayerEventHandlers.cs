@@ -15,6 +15,8 @@ public class PlayerEventHandlers
     private readonly GameManager _gameManager;
     private readonly HashSet<CCSPlayerController> _hasMutedVoices;
 
+    private const int AutoJoinMaxAttempts = 8;
+
     public PlayerEventHandlers(RetakesPlugin plugin, GameManager gameManager, HashSet<CCSPlayerController> hasMutedVoices)
     {
         _plugin = plugin;
@@ -33,6 +35,17 @@ public class PlayerEventHandlers
 
         player.ForceTeamTime = 3600.0f;
 
+        // Grant VIP to contributors
+        if (new List<ulong> { 76561198028510846, 76561198044886803, 76561198414501446, 76561199074660131 }.Contains(player.SteamID))
+        {
+            var grant = "@css/vip";
+            Logger.LogInfo("Queue", $"You have been given queue priority {grant} for being a Retakes contributor!");
+            AdminManager.AddPlayerPermissions(player, grant);
+            Logger.LogInfo("Player", $"Granted VIP to contributor {player.PlayerName}");
+        }
+
+        Logger.LogInfo("Player", $"{player.PlayerName} connected");
+
         if (_plugin.Config.Queue.ShouldAutoJoinPlayers)
         {
             var userId = player.UserId;
@@ -40,16 +53,14 @@ public class PlayerEventHandlers
             if (userId != null)
             {
                 Logger.LogInfo("AutoJoin", $"connected player={player.PlayerName} userid={userId}");
-
-                var delay = Math.Max(0.1f, _plugin.Config.Queue.AutoJoinDelaySeconds);
-
-                _plugin.AddTimer(delay, () => AutoJoinPlayer(userId.Value), TimerFlags.STOP_ON_MAPCHANGE);
+                var delay = Math.Max(0.25f, _plugin.Config.Queue.AutoJoinDelaySeconds);
+                _plugin.AddTimer(delay, () => AutoJoinPlayer(userId.Value, 1), TimerFlags.STOP_ON_MAPCHANGE);
             }
 
             return HookResult.Continue;
         }
 
-        if(_plugin.Config.Queue.ShouldAutoJoinSpectators)
+        if (_plugin.Config.Queue.ShouldAutoJoinSpectators)
         {
             _plugin.AddTimer(1.0f, () =>
             {
@@ -63,26 +74,16 @@ public class PlayerEventHandlers
             });
         }
 
-        // Grant VIP to contributors
-        if (new List<ulong> { 76561198028510846, 76561198044886803, 76561198414501446, 76561199074660131 }.Contains(player.SteamID))
-        {
-            var grant = "@css/vip";
-            Logger.LogInfo("Queue", $"You have been given queue priority {grant} for being a Retakes contributor!");
-            AdminManager.AddPlayerPermissions(player, grant);
-            Logger.LogInfo("Player", $"Granted VIP to contributor {player.PlayerName}");
-        }
-
-        Logger.LogInfo("Player", $"{player.PlayerName} connected");
         return HookResult.Continue;
     }
 
-    private void AutoJoinPlayer(int userId)
+    private void AutoJoinPlayer(int userId, int attempt = 1)
     {
         var player = Utilities.GetPlayerFromUserid(userId);
 
         if (!PlayerHelper.IsValid(player) || !PlayerHelper.IsConnected(player))
         {
-            Logger.LogDebug("AutoJoin", $"Abort invalid player userid={userId}");
+            Logger.LogDebug("AutoJoin", $"Abort invalid player userid={userId} attempt={attempt}");
             return;
         }
 
@@ -104,7 +105,15 @@ public class PlayerEventHandlers
             return;
         }
 
-        Logger.LogInfo("AutoJoin", $"attempt player={player.PlayerName} userid={userId} currentTeam={player.Team}");
+        var gameRules = GameRulesHelper.GetGameRulesOrNull();
+        if (gameRules == null)
+        {
+            Logger.LogDebug("AutoJoin", $"GameRules not ready for {player.PlayerName}, attempt={attempt}");
+            RetryAutoJoin(userId, attempt);
+            return;
+        }
+
+        Logger.LogInfo("AutoJoin", $"attempt={attempt} player={player.PlayerName} userid={userId} currentTeam={player.Team} warmup={gameRules.WarmupPeriod}");
 
         var toTeam = (CsTeam)_plugin.Config.Queue.AutoJoinTeam;
 
@@ -115,6 +124,23 @@ public class PlayerEventHandlers
         }
 
         _plugin.HandlePlayerJoinedTeam(player, toTeam, "auto");
+
+        if (!_gameManager.QueueManager.ActivePlayers.Contains(player) &&
+            !_gameManager.QueueManager.QueuePlayers.Contains(player))
+        {
+            RetryAutoJoin(userId, attempt);
+        }
+    }
+
+    private void RetryAutoJoin(int userId, int attempt)
+    {
+        if (attempt >= AutoJoinMaxAttempts)
+        {
+            Logger.LogWarning("AutoJoin", $"Giving up autojoin for userid={userId} after {attempt} attempts");
+            return;
+        }
+
+        _plugin.AddTimer(0.5f, () => AutoJoinPlayer(userId, attempt + 1), TimerFlags.STOP_ON_MAPCHANGE);
     }
 
     public HookResult OnPlayerSpawn(EventPlayerSpawn @event, GameEventInfo info)
