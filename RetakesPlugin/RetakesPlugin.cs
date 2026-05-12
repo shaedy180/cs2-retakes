@@ -3,6 +3,7 @@ using CounterStrikeSharp.API.Core;
 using CounterStrikeSharp.API.Core.Attributes;
 using CounterStrikeSharp.API.Core.Capabilities;
 using CounterStrikeSharp.API.Modules.Commands;
+using CounterStrikeSharp.API.Modules.Utils;
 using RetakesPluginShared;
 using System.Text.Json;
 
@@ -360,13 +361,27 @@ public class RetakesPlugin : BasePlugin, IPluginConfig<BaseConfigs>
         }
 
         if (!PlayerHelper.IsValid(player) || commandInfo.ArgCount < 2 ||
-            !Enum.TryParse<CounterStrikeSharp.API.Modules.Utils.CsTeam>(commandInfo.GetArg(1), out var toTeam))
+            !Enum.TryParse<CsTeam>(commandInfo.GetArg(1), out var toTeam))
         {
             return HookResult.Handled;
         }
 
-        var fromTeam = player!.Team;
-        Utils.Logger.LogDebug("Commands", $"[{player.PlayerName}] {fromTeam} -> {toTeam}");
+        Utils.Logger.LogDebug("Commands", $"[{player!.PlayerName}] {player.Team} -> {toTeam}");
+
+        return HandlePlayerJoinedTeam(player, toTeam, "manual");
+    }
+
+    public HookResult HandlePlayerJoinedTeam(CCSPlayerController player, CsTeam toTeam, string source)
+    {
+        if (_gameManager == null)
+        {
+            Utils.Logger.LogWarning("Commands", "Game manager not loaded");
+            return HookResult.Continue;
+        }
+
+        var fromTeam = player.Team;
+
+        Utils.Logger.LogDebug("Commands", $"[{player.PlayerName}] HandlePlayerJoinedTeam ({source}): {fromTeam} -> {toTeam}");
 
         _gameManager.QueueManager.DebugQueues(true);
         var response = _gameManager.QueueManager.PlayerJoinedTeam(player, fromTeam, toTeam);

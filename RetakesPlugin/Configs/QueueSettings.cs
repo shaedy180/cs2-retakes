@@ -22,6 +22,15 @@ public class QueueSettings
     [JsonPropertyName("ShouldAutoJoinSpectators")]
     public bool ShouldAutoJoinSpectators { get; set; } = true;
 
+    [JsonPropertyName("ShouldAutoJoinPlayers")]
+    public bool ShouldAutoJoinPlayers { get; set; } = false;
+
+    [JsonPropertyName("AutoJoinDelaySeconds")]
+    public float AutoJoinDelaySeconds { get; set; } = 1.0f;
+
+    [JsonPropertyName("AutoJoinTeam")]
+    public int AutoJoinTeam { get; set; } = 3;
+
     public List<QueuePriorityFlagConfig> GetPriorityFlags()
     {
         if (QueuePriorityFlag == null || QueuePriorityFlag.Count == 0)

@@ -1,5 +1,7 @@
+using CounterStrikeSharp.API;
 using CounterStrikeSharp.API.Core;
 using CounterStrikeSharp.API.Modules.Admin;
+using CounterStrikeSharp.API.Modules.Timers;
 using CounterStrikeSharp.API.Modules.Utils;
 
 using RetakesPlugin.Managers;
@@ -31,6 +33,22 @@ public class PlayerEventHandlers
 
         player.ForceTeamTime = 3600.0f;
 
+        if (_plugin.Config.Queue.ShouldAutoJoinPlayers)
+        {
+            var userId = player.UserId;
+
+            if (userId != null)
+            {
+                Logger.LogInfo("AutoJoin", $"connected player={player.PlayerName} userid={userId}");
+
+                var delay = Math.Max(0.1f, _plugin.Config.Queue.AutoJoinDelaySeconds);
+
+                _plugin.AddTimer(delay, () => AutoJoinPlayer(userId.Value), TimerFlags.STOP_ON_MAPCHANGE);
+            }
+
+            return HookResult.Continue;
+        }
+
         if(_plugin.Config.Queue.ShouldAutoJoinSpectators)
         {
             _plugin.AddTimer(1.0f, () =>
@@ -56,6 +74,47 @@ public class PlayerEventHandlers
 
         Logger.LogInfo("Player", $"{player.PlayerName} connected");
         return HookResult.Continue;
+    }
+
+    private void AutoJoinPlayer(int userId)
+    {
+        var player = Utilities.GetPlayerFromUserid(userId);
+
+        if (!PlayerHelper.IsValid(player) || !PlayerHelper.IsConnected(player))
+        {
+            Logger.LogDebug("AutoJoin", $"Abort invalid player userid={userId}");
+            return;
+        }
+
+        if (player!.IsBot || player.IsHLTV)
+        {
+            Logger.LogDebug("AutoJoin", $"Skip bot/hltv {player.PlayerName}");
+            return;
+        }
+
+        if (_gameManager.QueueManager.ActivePlayers.Contains(player))
+        {
+            Logger.LogDebug("AutoJoin", $"Skip already active {player.PlayerName}");
+            return;
+        }
+
+        if (_gameManager.QueueManager.QueuePlayers.Contains(player))
+        {
+            Logger.LogDebug("AutoJoin", $"Skip already queued {player.PlayerName}");
+            return;
+        }
+
+        Logger.LogInfo("AutoJoin", $"attempt player={player.PlayerName} userid={userId} currentTeam={player.Team}");
+
+        var toTeam = (CsTeam)_plugin.Config.Queue.AutoJoinTeam;
+
+        if (toTeam != CsTeam.Terrorist && toTeam != CsTeam.CounterTerrorist)
+        {
+            Logger.LogDebug("AutoJoin", $"Invalid AutoJoinTeam '{_plugin.Config.Queue.AutoJoinTeam}', falling back to CounterTerrorist");
+            toTeam = CsTeam.CounterTerrorist;
+        }
+
+        _plugin.HandlePlayerJoinedTeam(player, toTeam, "auto");
     }
 
     public HookResult OnPlayerSpawn(EventPlayerSpawn @event, GameEventInfo info)
