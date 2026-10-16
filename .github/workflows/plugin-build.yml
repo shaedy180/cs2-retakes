@@ -1,117 +1,53 @@
-name: Build RetakesPlugin
-
+name: Build and release
 on:
   push:
-    branches: [ "master" ]
-    paths:
-      - '**.cs'
-      - '**.csproj'
+    branches: [main, working-branch]
   pull_request:
-    branches: [ "master" ]
-    paths:
-      - '**.cs'
-      - '**.csproj'
+    branches: [main]
   release:
-    types:
-      - created
+    types: [published]
   workflow_dispatch:
-
+permissions:
+  contents: read
 jobs:
   build:
     runs-on: ubuntu-latest
-
     steps:
-      - uses: actions/checkout@v4
-      
-      - name: Setup .NET
-        uses: actions/setup-dotnet@v4
+      - uses: actions/checkout@v6
+        with: {fetch-depth: 0}
+      - uses: actions/setup-dotnet@v5
+        with: {dotnet-version: '8.0.x'}
+      - name: Require release revision on main
+        if: github.event_name == 'release'
+        run: git merge-base --is-ancestor HEAD origin/main
+      - name: Locked restore, vulnerability audit and build
+        run: |
+          set -euo pipefail
+          dotnet restore RetakesPluginShared/RetakesPluginShared.csproj --locked-mode
+          dotnet build RetakesPluginShared/RetakesPluginShared.csproj -c Release --no-restore
+          dotnet restore RetakesPlugin/RetakesPlugin.csproj --locked-mode
+          dotnet build RetakesPlugin/RetakesPlugin.csproj -c Release --no-restore
+      - run: dotnet format RetakesPluginShared/RetakesPluginShared.csproj --no-restore --verify-no-changes
+      - run: dotnet format RetakesPlugin/RetakesPlugin.csproj --no-restore --verify-no-changes
+      - run: python3 scripts/package.py
+      - uses: actions/upload-artifact@v4
         with:
-          dotnet-version: 8.0.x
-      
-      - name: Build RetakesPluginShared
-        run: |
-          cd RetakesPluginShared
-          dotnet build
-      
-      - name: Build RetakesPlugin
-        run: |
-          cd RetakesPlugin
-          dotnet build
-      
-      - name: Create output directory with complete structure
-        run: |
-          mkdir -p output/addons/counterstrikesharp/plugins/RetakesPlugin
-          mkdir -p output/addons/counterstrikesharp/shared/RetakesPluginShared
-          
-          # Copy RetakesPlugin files
-          cp ./RetakesPlugin/bin/Debug/net8.0/RetakesPlugin.dll output/addons/counterstrikesharp/plugins/RetakesPlugin/
-          cp ./RetakesPlugin/bin/Debug/net8.0/RetakesPlugin.pdb output/addons/counterstrikesharp/plugins/RetakesPlugin/
-          cp -r ./RetakesPlugin/map_config output/addons/counterstrikesharp/plugins/RetakesPlugin/
-          cp -r ./RetakesPlugin/lang output/addons/counterstrikesharp/plugins/RetakesPlugin/
-          
-          # Copy RetakesPluginShared files
-          cp ./RetakesPluginShared/bin/Debug/net8.0/RetakesPluginShared.dll output/addons/counterstrikesharp/shared/RetakesPluginShared/
-          cp ./RetakesPluginShared/bin/Debug/net8.0/RetakesPluginShared.pdb output/addons/counterstrikesharp/shared/RetakesPluginShared/
-          cp ./RetakesPluginShared/bin/Debug/net8.0/RetakesPluginShared.deps.json output/addons/counterstrikesharp/shared/RetakesPluginShared/
-      
-      - name: Create output directory without map configs
-        run: |
-          mkdir -p output-no-map-configs/addons/counterstrikesharp/plugins/RetakesPlugin
-          mkdir -p output-no-map-configs/addons/counterstrikesharp/shared/RetakesPluginShared
-          
-          # Copy RetakesPlugin files (without map_config)
-          cp ./RetakesPlugin/bin/Debug/net8.0/RetakesPlugin.dll output-no-map-configs/addons/counterstrikesharp/plugins/RetakesPlugin/
-          cp ./RetakesPlugin/bin/Debug/net8.0/RetakesPlugin.pdb output-no-map-configs/addons/counterstrikesharp/plugins/RetakesPlugin/
-          cp -r ./RetakesPlugin/lang output-no-map-configs/addons/counterstrikesharp/plugins/RetakesPlugin/
-          
-          # Copy RetakesPluginShared files
-          cp ./RetakesPluginShared/bin/Debug/net8.0/RetakesPluginShared.dll output-no-map-configs/addons/counterstrikesharp/shared/RetakesPluginShared/
-          cp ./RetakesPluginShared/bin/Debug/net8.0/RetakesPluginShared.pdb output-no-map-configs/addons/counterstrikesharp/shared/RetakesPluginShared/
-          cp ./RetakesPluginShared/bin/Debug/net8.0/RetakesPluginShared.deps.json output-no-map-configs/addons/counterstrikesharp/shared/RetakesPluginShared/
-      
-      - name: Publish artifact (with map configs)
-        uses: actions/upload-artifact@v4
-        with:
-          name: RetakesPlugin-${{ github.sha }}
-          path: output
-      
-      - name: Publish artifact (no map configs)
-        uses: actions/upload-artifact@v4
-        with:
-          name: RetakesPlugin-${{ github.sha }}-no-map-configs
-          path: output-no-map-configs
-  
+          name: plugins-${{ github.sha }}
+          path: |
+            *.zip
+            *.zip.sha256
+          if-no-files-found: error
   release:
-    needs: build
-    permissions: write-all
-    runs-on: ubuntu-latest
     if: github.event_name == 'release'
-
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
-      - name: Download build artifact (with map configs)
-        uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v4
         with:
-          name: RetakesPlugin-${{ github.sha }}
-          path: ./with-map-configs
-
-      - name: Download build artifact (no map configs)
-        uses: actions/download-artifact@v4
+          name: plugins-${{ github.sha }}
+          path: artifacts
+      - uses: softprops/action-gh-release@v2
         with:
-          name: RetakesPlugin-${{ github.sha }}-no-map-configs
-          path: ./no-map-configs
-
-      - name: Create release assets
-        run: |
-          cd with-map-configs
-          zip -r ../RetakesPlugin-${{ github.event.release.tag_name }}.zip ./addons
-          cd ../no-map-configs
-          zip -r ../RetakesPlugin-${{ github.event.release.tag_name }}-no-map-configs.zip ./addons
-
-      - name: Upload release assets
-        uses: softprops/action-gh-release@v2
-        with:
-          files: |
-            ./RetakesPlugin-${{ github.event.release.tag_name }}.zip
-            ./RetakesPlugin-${{ github.event.release.tag_name }}-no-map-configs.zip
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          files: artifacts/*
