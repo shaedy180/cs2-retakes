@@ -31,7 +31,7 @@ public class PlayerEventHandlers
 
         player.ForceTeamTime = 3600.0f;
 
-        if(_plugin.Config.Queue.ShouldAutoJoinSpectators)
+        if (_plugin.Config.Queue.ShouldAutoJoinSpectators)
         {
             _plugin.AddTimer(1.0f, () =>
             {

@@ -1,3 +1,16 @@
+## Maintained fork and release workflow
+
+Canonical source: `shaedy180/cs2-retakes`, `main`. Development uses the single `working-branch` → `main` PR with passing CI and a merge commit; synchronize the working branch afterward. Read [AGENTS.md](AGENTS.md). Upstream links below identify the original projects and attribution; upstream releases are distinct from builds of this fork. The installed gameserver revision must be checked separately before any upgrade.
+
+Build with .NET 8 SDK. Dependencies are pinned in project files and committed `packages.lock.json`; CI restores with `--locked-mode`, compiles Release, audits transitive dependencies during restore, preserves the existing .NET formatting gate, and uploads SHA-labelled packages. Regenerate lockfiles deliberately with `dotnet restore --force-evaluate` and review changes. There is no VPS deployment workflow.
+
+```sh
+dotnet restore RetakesPlugin/RetakesPlugin.csproj --locked-mode
+dotnet build RetakesPlugin/RetakesPlugin.csproj -c Release --no-restore
+```
+
+CI release archives include the plugin/shared library, translations, and separate variants with and without map configs. Create a GitHub release from a tag on `main` only after CI and isolated gameserver testing; the release job rebuilds and validates that revision before uploading assets. Build success does not establish in-game compatibility. Preserve the previous binaries, configuration and map spawns for rollback. Install through CounterStrikeSharp during an authorized maintenance window and verify plugin load, commands, permissions and map/reconnect behavior. Never replace live configuration or user data with build artifacts. Existing optional `CopyPath` development hooks must not target production during routine builds.
+
 [![GitHub Downloads](https://img.shields.io/github/downloads/b3none/cs2-retakes/total.svg?style=flat-square&label=Downloads)](https://github.com/b3none/cs2-retakes/releases/latest)
 ![GitHub Actions Workflow Status](https://img.shields.io/github/actions/workflow/status/b3none/cs2-retakes/plugin-build.yml?branch=master&style=flat-square&label=Latest%20Build)
 

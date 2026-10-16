@@ -4,3 +4,8 @@
 /RetakesPluginShared/.idea
 *.DotSettings.user
 *.sln
+**/bin/
+**/obj/
+**/TestResults/
+output*/
+*.zip
