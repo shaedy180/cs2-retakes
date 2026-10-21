@@ -36,13 +36,14 @@ public class AnnouncementService
 
     public void AnnounceBombsite(Bombsite bombsite, bool onlyCenter = false)
     {
-        var numTerrorist = PlayerHelper.GetPlayerCount(CounterStrikeSharp.API.Modules.Utils.CsTeam.Terrorist);
-        var numCounterTerrorist = PlayerHelper.GetPlayerCount(CounterStrikeSharp.API.Modules.Utils.CsTeam.CounterTerrorist);
+        var players = Utilities.GetPlayers();
+        var numTerrorist = players.Count(player => PlayerHelper.IsValid(player) && player.Team == CounterStrikeSharp.API.Modules.Utils.CsTeam.Terrorist);
+        var numCounterTerrorist = players.Count(player => PlayerHelper.IsValid(player) && player.Team == CounterStrikeSharp.API.Modules.Utils.CsTeam.CounterTerrorist);
 
         var announcementMessage = _plugin.Localizer["retakes.bombsite.announcement", bombsite.ToString(), numTerrorist, numCounterTerrorist];
         var centerAnnouncementMessage = _plugin.Localizer["retakes.center.bombsite.announcement", bombsite.ToString(), numTerrorist, numCounterTerrorist];
 
-        foreach (var player in Utilities.GetPlayers())
+        foreach (var player in players)
         {
             if (!onlyCenter)
             {
