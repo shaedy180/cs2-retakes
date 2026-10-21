@@ -212,3 +212,6 @@ Release-specific builds, tag checks, immutable commit labels, publishing and dep
 ## Performance and lifecycle validation
 
 Bombsite announcements reuse a single player snapshot for both team counts and recipients, avoiding three engine scans for one announcement.
+
+
+Timer callbacks are owned explicitly: one-shot references are released after invocation, repeat callbacks on cancellation/unload, and map-scoped callbacks at map end. Completed/cancelled handles are idempotent and never call native KillTimer again, avoiding stale-address reuse. Native checks on CSS 377 reproduce the original permanent-reference retention and verify single-use collection; lifecycle regression tests live in shaedyHudManager. Timer intervals, repeat flags and map flags are preserved.

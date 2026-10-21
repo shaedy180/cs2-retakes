@@ -24,7 +24,7 @@ namespace RetakesPlugin;
 [MinimumApiVersion(345)]
 public class RetakesPlugin : BasePlugin, IPluginConfig<BaseConfigs>
 {
-    public const string Version = "3.0.4";
+    public const string Version = "3.0.5";
 
     #region Plugin Info
     public override string ModuleName => "Retakes Plugin";
@@ -103,8 +103,11 @@ public class RetakesPlugin : BasePlugin, IPluginConfig<BaseConfigs>
         };
     }
 
+    internal ShaedyTimers.PluginTimers TimersOwned { get; private set; } = null!;
+
     public override void Load(bool hotReload)
     {
+        TimersOwned = new(this);
         Utils.Logger.LogInfo("Main", "Plugin loading...");
 
         RegisterListener<Listeners.OnMapStart>(OnMapStart);
@@ -143,7 +146,7 @@ public class RetakesPlugin : BasePlugin, IPluginConfig<BaseConfigs>
 
         SpawnService.Reset();
 
-        AddTimer(1.0f, ServerHelper.ExecuteRetakesConfiguration);
+        TimersOwned.Schedule(1.0f, ServerHelper.ExecuteRetakesConfiguration);
 
         InitializeServices(mapName);
     }
@@ -386,7 +389,12 @@ public class RetakesPlugin : BasePlugin, IPluginConfig<BaseConfigs>
 
     public override void Unload(bool hotReload)
     {
-        Utils.Logger.LogInfo("Main", "Plugin unloading...");
-        base.Unload(hotReload);
+        try
+        {
+            Utils.Logger.LogInfo("Main", "Plugin unloading...");
+            base.Unload(hotReload);
+
+        }
+        finally { TimersOwned.Dispose(); }
     }
 }

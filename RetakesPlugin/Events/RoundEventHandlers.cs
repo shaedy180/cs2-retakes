@@ -226,7 +226,7 @@ public class RoundEventHandlers
     {
         Logger.LogInfo("Round", "Bomb planted");
 
-        _plugin.AddTimer(4.1f, () =>
+        _plugin.TimersOwned.Schedule(4.1f, () =>
         {
             _announcementService.AnnounceBombsite(_currentBombsite, true);
         });

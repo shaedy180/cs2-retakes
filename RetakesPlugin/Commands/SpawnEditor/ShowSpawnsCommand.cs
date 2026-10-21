@@ -60,7 +60,7 @@ public class ShowSpawnsCommand
         Server.ExecuteCommand("mp_warmuptime 999999");
         Server.ExecuteCommand("mp_warmup_start");
 
-        _plugin.AddTimer(1.0f, () =>
+        _plugin.TimersOwned.Schedule(1.0f, () =>
         {
             if (_showingSpawnsForBombsite != null && _plugin.MapConfigService != null)
             {

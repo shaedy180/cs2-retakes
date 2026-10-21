@@ -33,7 +33,7 @@ public class PlayerEventHandlers
 
         if (_plugin.Config.Queue.ShouldAutoJoinSpectators)
         {
-            _plugin.AddTimer(1.0f, () =>
+            _plugin.TimersOwned.Schedule(1.0f, () =>
             {
                 if (!PlayerHelper.IsValid(player))
                 {
