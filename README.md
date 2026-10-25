@@ -225,3 +225,8 @@ Upstream `retakes_enabled` is a bool FakeConVar, default true, applied immediate
 `retakes_plugin:runtime_v1` (`Func<string,Dictionary<string,string>>`) offers enable, disable, enabled and status to trusted server plugins. Status confirms enabled state and initialized map spawns; no network endpoint is added. Runtime orchestration uses late loads (`Load(false)`), never a plugin reload, so the existing true hot-reload map restart remains available for ordinary updates. The persisted confirmed mode initializes inactive Retakes on a live Surf/KZ process boot. Legacy profiles still control whether the plugin is installed in the active directory.
 
 `dotnet run --project tests/Lifecycle -c Release` tests immediate disable and stale callback generations. CI also retains formatting, locked dependencies and reproducible packages. Installation must preserve production configs, spawns and the shared provider DLL; use a controlled process stop/start when replacing a DLL whose automatic reload can change maps. Never install the old 3.0.x local build over the deployed upstream baseline.
+
+
+### Native timer ownership hardening (3.1.3)
+
+The isolated native-scheduler regression reproduced the old callback-root failure when a map reload happens before the first game frame. Retakes now uses the already validated safe-phase timer pool from MapChooser, retaining native delegates until actual deletion and owning map cancellation without forwarding the competing native STOP flag. `CancelAll` preserves the pool across enable/disable cycles. The nine timer lifecycle regressions run in CI alongside the activation gate test; the pre-frame case fails against the previous Retakes helper. This changes callback ownership, not gameplay timing or map/reload semantics.
