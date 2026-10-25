@@ -13,6 +13,7 @@ public class AnnouncementService
     private readonly HashSet<CCSPlayerController> _hasMutedVoices;
     private readonly bool _voicesEnabled;
     private readonly bool _centerEnabled;
+    private readonly bool _plantLocationEnabled;
 
     private static readonly string[] BombsiteAnnouncers =
     [
@@ -25,25 +26,48 @@ public class AnnouncementService
         "swat_fem"
     ];
 
-    public AnnouncementService(RetakesPlugin plugin, Random random, HashSet<CCSPlayerController> hasMutedVoices, bool voicesEnabled, bool centerEnabled)
+    public AnnouncementService(RetakesPlugin plugin, Random random, HashSet<CCSPlayerController> hasMutedVoices, bool voicesEnabled, bool centerEnabled, bool plantLocationEnabled)
     {
         _plugin = plugin;
         _random = random;
         _hasMutedVoices = hasMutedVoices;
         _voicesEnabled = voicesEnabled;
         _centerEnabled = centerEnabled;
+        _plantLocationEnabled = plantLocationEnabled;
+    }
+
+    public void AnnouncePlantLocation(string? plantLocation, Bombsite bombsite)
+    {
+        if (!_plantLocationEnabled)
+        {
+            return;
+        }
+
+        // Fall back to the bombsite letter when the planter spawn has no callout name configured
+        var locationName = string.IsNullOrWhiteSpace(plantLocation) ? bombsite.ToString() : plantLocation;
+
+        var message = $"{_plugin.Localizer["retakes.prefix"]} {_plugin.Localizer["retakes.bombsite.plant_location", locationName]}";
+
+        foreach (var player in Utilities.GetPlayers())
+        {
+            if (player.Team == CounterStrikeSharp.API.Modules.Utils.CsTeam.Terrorist)
+            {
+                player.PrintToChat(message);
+            }
+        }
+
+        Logger.LogInfo("Announcement", $"Announced plant location: {locationName}");
     }
 
     public void AnnounceBombsite(Bombsite bombsite, bool onlyCenter = false)
     {
-        var players = Utilities.GetPlayers();
-        var numTerrorist = players.Count(player => PlayerHelper.IsValid(player) && player.Team == CounterStrikeSharp.API.Modules.Utils.CsTeam.Terrorist);
-        var numCounterTerrorist = players.Count(player => PlayerHelper.IsValid(player) && player.Team == CounterStrikeSharp.API.Modules.Utils.CsTeam.CounterTerrorist);
+        var numTerrorist = PlayerHelper.GetPlayerCount(CounterStrikeSharp.API.Modules.Utils.CsTeam.Terrorist);
+        var numCounterTerrorist = PlayerHelper.GetPlayerCount(CounterStrikeSharp.API.Modules.Utils.CsTeam.CounterTerrorist);
 
         var announcementMessage = _plugin.Localizer["retakes.bombsite.announcement", bombsite.ToString(), numTerrorist, numCounterTerrorist];
         var centerAnnouncementMessage = _plugin.Localizer["retakes.center.bombsite.announcement", bombsite.ToString(), numTerrorist, numCounterTerrorist];
 
-        foreach (var player in players)
+        foreach (var player in Utilities.GetPlayers())
         {
             if (!onlyCenter)
             {

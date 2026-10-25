@@ -23,4 +23,8 @@ public class Spawn
     public CsTeam Team { get; set; }
     public Bombsite Bombsite { get; set; }
     public bool CanBePlanter { get; set; }
+
+    // Optional callout name for planter spawns, e.g. "Short" or "Default"
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? PlantLocation { get; set; }
 }

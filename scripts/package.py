@@ -7,7 +7,7 @@ for suffix, maps in (('', True), ('-no-map-configs', False)):
     shared = output / 'addons/counterstrikesharp/shared/RetakesPluginShared'
     for project, destination in (('RetakesPlugin', plugin), ('RetakesPluginShared', shared)):
         destination.mkdir(parents=True, exist_ok=True)
-        source = root / project / 'bin/Release/net8.0'
+        source = root / project / ('bin/Release/net10.0' if project == 'RetakesPlugin' else 'bin/Release/net8.0')
         for extension in ('.dll', '.pdb', '.deps.json'):
             shutil.copy2(source / (project + extension), destination)
     shutil.copytree(root / 'RetakesPlugin/lang', plugin / 'lang', dirs_exist_ok=True)

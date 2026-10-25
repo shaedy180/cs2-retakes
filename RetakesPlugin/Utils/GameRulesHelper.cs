@@ -34,7 +34,14 @@ public static class GameRulesHelper
 
     public static void RestartGame()
     {
-        if (!GetGameRules().WarmupPeriod)
+        var gameRules = GetGameRulesOrNull();
+        if (gameRules == null)
+        {
+            Logger.LogWarning("GameRules", "Game rules not available, skipping game restart");
+            return;
+        }
+
+        if (!gameRules.WarmupPeriod)
         {
             CheckRoundDone();
         }

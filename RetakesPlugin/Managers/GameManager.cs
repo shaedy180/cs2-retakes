@@ -16,12 +16,15 @@ public class GameManager
     private readonly bool _isScrambleEnabled;
     private readonly bool _removeSpectatorsEnabled;
     private readonly bool _isBalanceEnabled;
+    private readonly int _minimumPlayers;
+    private float _lastRestartGameTime = -RestartGameCooldownSeconds;
 
     public const int ScoreForKill = 50;
     public const int ScoreForAssist = 25;
     public const int ScoreForDefuse = 50;
+    private const float RestartGameCooldownSeconds = 3.0f;
 
-    public GameManager(RetakesPlugin plugin, QueueManager queueManager, int? roundsToScramble, bool? isScrambleEnabled, bool? removeSpectatorsEnabled, bool? isBalanceEnabled)
+    public GameManager(RetakesPlugin plugin, QueueManager queueManager, int? roundsToScramble, bool? isScrambleEnabled, bool? removeSpectatorsEnabled, bool? isBalanceEnabled, int? minimumPlayers)
     {
         _plugin = plugin;
         QueueManager = queueManager;
@@ -29,8 +32,130 @@ public class GameManager
         _isScrambleEnabled = isScrambleEnabled ?? true;
         _removeSpectatorsEnabled = removeSpectatorsEnabled ?? false;
         _isBalanceEnabled = isBalanceEnabled ?? true;
+        // Clamp so a misconfigured value can never leave the server waiting forever
+        _minimumPlayers = Math.Min(minimumPlayers ?? 0, queueManager.MaxRetakesPlayers);
 
         Logger.LogInfo("GameManager", "Game manager initialized");
+    }
+
+    public bool IsWaitingForPlayers { get; private set; }
+
+    public bool ShouldWaitForPlayers()
+    {
+        return QueueManager.GetHumanActivePlayerCount() < _minimumPlayers;
+    }
+
+    public void StartWaitingForPlayers()
+    {
+        var alreadyWaiting = IsWaitingForPlayers;
+
+        IsWaitingForPlayers = true;
+
+        // Re-assert the warmup so the hold recovers from an unexpected round restart
+        // happening while we were already waiting, but don't restart one we are
+        // already in, that would needlessly respawn everyone.
+        if (!(GameRulesHelper.GetGameRulesOrNull()?.WarmupPeriod ?? false))
+        {
+            Server.ExecuteCommand("mp_warmup_start");
+        }
+
+        Server.ExecuteCommand("mp_warmup_pausetimer 1");
+
+        if (!alreadyWaiting)
+        {
+            AnnounceWaitingForPlayers();
+            Logger.LogInfo("GameManager", $"Waiting for players ({QueueManager.GetHumanActivePlayerCount()}/{_minimumPlayers})");
+        }
+    }
+
+    public void CancelWaitingForPlayers()
+    {
+        if (!IsWaitingForPlayers)
+        {
+            return;
+        }
+
+        IsWaitingForPlayers = false;
+        Server.ExecuteCommand("mp_warmup_pausetimer 0");
+        Logger.LogInfo("GameManager", "Waiting for players cancelled");
+    }
+
+    public void CheckMinimumPlayers()
+    {
+        if (!IsWaitingForPlayers)
+        {
+            // Take the hold as soon as we are short on players during a warmup,
+            // otherwise the warmup timer runs out, ends the round, and only then
+            // does round pre-start bounce us back into a paused warmup.
+            if (ShouldWaitForPlayers() && (GameRulesHelper.GetGameRulesOrNull()?.WarmupPeriod ?? false))
+            {
+                StartWaitingForPlayers();
+            }
+
+            return;
+        }
+
+        if (ShouldWaitForPlayers())
+        {
+            AnnounceWaitingForPlayers();
+            return;
+        }
+
+        IsWaitingForPlayers = false;
+        Server.ExecuteCommand("mp_warmup_pausetimer 0");
+        Server.ExecuteCommand("mp_warmup_end");
+
+        Server.PrintToChatAll($"{_plugin.Localizer["retakes.prefix"]} {_plugin.Localizer["retakes.queue.minimum_players_reached"]}");
+        Logger.LogInfo("GameManager", "Minimum players reached, starting the game");
+    }
+
+    private float _lastWaitingAnnounceTime = -WaitingAnnounceCooldownSeconds;
+    private int _lastAnnouncedWaitingCount = -1;
+    private const float WaitingAnnounceCooldownSeconds = 10.0f;
+
+    private void AnnounceWaitingForPlayers()
+    {
+        var humanCount = QueueManager.GetHumanActivePlayerCount();
+
+        // Rate limit purely on time so join/leave flapping can't flood the chat either
+        var timeSinceLastAnnounce = Server.CurrentTime - _lastWaitingAnnounceTime;
+        if (timeSinceLastAnnounce >= 0 && timeSinceLastAnnounce < WaitingAnnounceCooldownSeconds)
+        {
+            return;
+        }
+
+        _lastAnnouncedWaitingCount = humanCount;
+        _lastWaitingAnnounceTime = Server.CurrentTime;
+
+        Server.PrintToChatAll($"{_plugin.Localizer["retakes.prefix"]} {_plugin.Localizer["retakes.queue.waiting_for_players", humanCount, _minimumPlayers]}");
+    }
+
+    public void RestartGameIfEmpty()
+    {
+        if (IsWaitingForPlayers)
+        {
+            // The server is already parked in a paused warmup, restarting would tear it down
+            return;
+        }
+
+        if (QueueManager.ActivePlayers.Count != 0)
+        {
+            return;
+        }
+
+        var timeSinceLastRestart = Server.CurrentTime - _lastRestartGameTime;
+        if (timeSinceLastRestart >= 0 && timeSinceLastRestart < RestartGameCooldownSeconds)
+        {
+            Logger.LogDebug("GameManager", "Skipping game restart, cooldown active");
+            return;
+        }
+
+        _lastRestartGameTime = Server.CurrentTime;
+
+        Logger.LogDebug("GameManager", "No active players, updating queue and restarting game");
+        QueueManager.ClearRoundTeams();
+        QueueManager.Update();
+        GameRulesHelper.RestartGame();
     }
 
     private bool _scrambleNextRound;
@@ -316,11 +441,11 @@ public class GameManager
         {
             if (terrorists.Contains(player))
             {
-                player.SwitchTeam(CsTeam.Terrorist);
+                PlayerHelper.TrySwitchTeam(player, CsTeam.Terrorist);
             }
             else if (counterTerrorists.Contains(player))
             {
-                player.SwitchTeam(CsTeam.CounterTerrorist);
+                PlayerHelper.TrySwitchTeam(player, CsTeam.CounterTerrorist);
             }
         }
 

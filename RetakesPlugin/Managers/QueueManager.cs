@@ -1,3 +1,4 @@
+using CounterStrikeSharp.API;
 using CounterStrikeSharp.API.Core;
 using CounterStrikeSharp.API.Modules.Utils;
 
@@ -32,6 +33,20 @@ public class QueueManager
         _shouldPreventTeamChangesMidRound = shouldPreventTeamChangesMidRound ?? true;
 
         Logger.LogInfo("QueueManager", $"Queue manager initialized (Max: {_maxRetakesPlayers}, T Ratio: {_terroristRatio})");
+    }
+
+    public int MaxRetakesPlayers => _maxRetakesPlayers;
+
+    public int GetHumanActivePlayerCount()
+    {
+        // Queued humans count too, otherwise bots occupying active slots could
+        // stop a MinimumPlayers hold from ever releasing
+        return ActivePlayers.Count(IsHumanPlayer) + QueuePlayers.Count(IsHumanPlayer);
+    }
+
+    private static bool IsHumanPlayer(CCSPlayerController player)
+    {
+        return PlayerHelper.IsValid(player) && !player.IsBot && !player.IsHLTV;
     }
 
     public int GetTargetNumTerrorists()
@@ -93,7 +108,7 @@ public class QueueManager
                     player.CommitSuicide(false, true);
                 }
 
-                player.ChangeTeam(CsTeam.Spectator);
+                PlayerHelper.TryChangeTeam(player, CsTeam.Spectator);
                 return HookResult.Handled;
             }
 
@@ -103,6 +118,13 @@ public class QueueManager
 
         if (!QueuePlayers.Contains(player))
         {
+            // Players explicitly choosing to spectate should not be tracked as wanting
+            // to play. CsTeam.None (the auto-select button) still falls through below.
+            if (toTeam == CsTeam.Spectator)
+            {
+                return HookResult.Continue;
+            }
+
             var gameRules = GameRulesHelper.GetGameRulesOrNull();
             if ((gameRules?.WarmupPeriod ?? false) && ActivePlayers.Count < _maxRetakesPlayers)
             {
@@ -203,14 +225,19 @@ public class QueueManager
 
             var queuePlayerDisplayName = PlayerHelper.GetQueuePriorityDisplayName(queuePlayer, _queuePriorityFlags);
 
-            replaceablePlayer.ChangeTeam(CsTeam.Spectator);
+            if (!PlayerHelper.TryChangeTeam(queuePlayer, CsTeam.CounterTerrorist))
+            {
+                Logger.LogWarning("QueueManager", $"Could not move {queuePlayer.PlayerName} to CT, skipping queue priority swap");
+                continue;
+            }
+
+            PlayerHelper.TryChangeTeam(replaceablePlayer, CsTeam.Spectator);
             ActivePlayers.Remove(replaceablePlayer);
             QueuePlayers.Add(replaceablePlayer);
             replaceablePlayer.PrintToChat($"{_plugin.Localizer["retakes.prefix"]} {_plugin.Localizer["retakes.queue.replaced_by_vip", queuePlayer.PlayerName, queuePlayerDisplayName]}");
 
             ActivePlayers.Add(queuePlayer);
             QueuePlayers.Remove(queuePlayer);
-            queuePlayer.ChangeTeam(CsTeam.CounterTerrorist);
             queuePlayer.PrintToChat($"{_plugin.Localizer["retakes.prefix"]} {_plugin.Localizer["retakes.queue.vip_took_place", replaceablePlayer.PlayerName, queuePlayerDisplayName]}");
 
             Logger.LogInfo("QueueManager", $"{queuePlayer.PlayerName} ({queuePlayerDisplayName}, priority: {queuePlayerPriority}) replaced {replaceablePlayer.PlayerName} (priority: {replaceablePlayerData.Priority})");
@@ -243,13 +270,13 @@ public class QueueManager
 
             foreach (var player in playersToAddList)
             {
-                if (!PlayerHelper.IsValid(player))
+                if (!PlayerHelper.TryChangeTeam(player, CsTeam.CounterTerrorist))
                 {
+                    Logger.LogWarning("QueueManager", $"Could not move {player.PlayerName} from queue to active, skipping");
                     continue;
                 }
 
                 ActivePlayers.Add(player);
-                player.ChangeTeam(CsTeam.CounterTerrorist);
                 Logger.LogInfo("QueueManager", $"Moved {player.PlayerName} from queue to active");
             }
         }
@@ -269,6 +296,74 @@ public class QueueManager
                 player.PrintToChat($"{_plugin.Localizer["retakes.prefix"]} {waitingMessage}");
             }
         }
+    }
+
+    public void AddConnectingPlayer(CCSPlayerController player)
+    {
+        if (!PlayerHelper.IsValid(player) || player.IsBot || player.IsHLTV)
+        {
+            return;
+        }
+
+        if (ActivePlayers.Contains(player) || QueuePlayers.Contains(player))
+        {
+            return;
+        }
+
+        PlayerJoinedTeam(player, CsTeam.None, CsTeam.CounterTerrorist);
+
+        if (ActivePlayers.Contains(player))
+        {
+            PlayerHelper.TryChangeTeam(player, CsTeam.CounterTerrorist);
+            Logger.LogInfo("QueueManager", $"Auto joined {player.PlayerName} into the game");
+        }
+        else
+        {
+            PlayerHelper.TryChangeTeam(player, CsTeam.Spectator);
+            Logger.LogInfo("QueueManager", $"Auto joined {player.PlayerName} into the queue");
+        }
+    }
+
+    public void SyncActivePlayersFromTeams()
+    {
+        foreach (var player in Utilities.GetPlayers())
+        {
+            if (!PlayerHelper.IsValid(player) || !PlayerHelper.IsConnected(player) || player.IsBot || player.IsHLTV)
+            {
+                continue;
+            }
+
+            if (player.Team != CsTeam.Terrorist && player.Team != CsTeam.CounterTerrorist)
+            {
+                continue;
+            }
+
+            if (ActivePlayers.Contains(player) || QueuePlayers.Contains(player))
+            {
+                continue;
+            }
+
+            if (ActivePlayers.Count < _maxRetakesPlayers)
+            {
+                ActivePlayers.Add(player);
+            }
+            else
+            {
+                QueuePlayers.Add(player);
+                PlayerHelper.TryChangeTeam(player, CsTeam.Spectator);
+                player.PrintToChat($"{_plugin.Localizer["retakes.prefix"]} {_plugin.Localizer["retakes.queue.joined"]}");
+            }
+        }
+
+        Logger.LogInfo("QueueManager", $"Synced players from teams: {ActivePlayers.Count} active, {QueuePlayers.Count} queued");
+    }
+
+    public void ClearAllQueues()
+    {
+        ActivePlayers.Clear();
+        QueuePlayers.Clear();
+        ClearRoundTeams();
+        Logger.LogInfo("QueueManager", "All queues cleared");
     }
 
     public void RemovePlayerFromQueues(CCSPlayerController player)

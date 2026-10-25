@@ -14,6 +14,8 @@ public class SpawnManager
     private readonly Dictionary<Bombsite, Dictionary<CsTeam, List<Spawn>>> _spawns = new();
     private readonly Random _random = new();
 
+    public Spawn? CurrentPlanterSpawn { get; private set; }
+
     public SpawnManager(MapConfigService mapConfigService)
     {
         _mapConfigService = mapConfigService;
@@ -89,6 +91,7 @@ public class SpawnManager
         }
 
         var randomPlanterSpawn = planterSpawns[_random.Next(planterSpawns.Count)];
+        CurrentPlanterSpawn = randomPlanterSpawn;
         spawns[CsTeam.Terrorist].Remove(randomPlanterSpawn);
 
         CCSPlayerController? planter = null;

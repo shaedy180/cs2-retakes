@@ -2,7 +2,7 @@
 
 Canonical source: `shaedy180/cs2-retakes`, `main`. Development uses the single `working-branch` → `main` PR with passing CI and a merge commit; synchronize the working branch afterward. Read [AGENTS.md](AGENTS.md). Upstream links below identify the original projects and attribution; upstream releases are distinct from builds of this fork. The installed gameserver revision must be checked separately before any upgrade.
 
-Build with .NET 8 SDK. Dependencies are pinned in project files and committed `packages.lock.json`; CI restores with `--locked-mode`, compiles Release, audits transitive dependencies during restore, preserves the existing .NET formatting gate, and uploads SHA-labelled packages. Regenerate lockfiles deliberately with `dotnet restore --force-evaluate` and review changes. There is no VPS deployment workflow.
+Build RetakesPlugin with .NET 10 SDK and the shared interface with .NET 8 SDK. Dependencies are pinned in project files and committed `packages.lock.json`; CI restores with `--locked-mode`, compiles Release, audits transitive dependencies during restore, preserves the existing .NET formatting gate, and uploads SHA-labelled packages. Regenerate lockfiles deliberately with `dotnet restore --force-evaluate` and review changes. There is no VPS deployment workflow.
 
 ```sh
 dotnet restore RetakesPlugin/RetakesPlugin.csproj --locked-mode
@@ -215,3 +215,13 @@ Bombsite announcements reuse a single player snapshot for both team counts and r
 
 
 Timer callbacks are owned explicitly: one-shot references are released after invocation, repeat callbacks on cancellation/unload, and map-scoped callbacks at map end. Completed/cancelled handles are idempotent and never call native KillTimer again, avoiding stale-address reuse. Native checks on CSS 377 reproduce the original permanent-reference retention and verify single-use collection; lifecycle regression tests live in shaedyHudManager. Timer intervals, repeat flags and map flags are preserved.
+
+## Deployed upstream baseline and runtime control (3.1.2)
+
+The production 3.1.1 DLL SHA-256 `5bc16cbf18f53679cf62ed3460794571a3fd8b3b17a27feb711f4dfbff9d6131` exactly matches B3none's official 3.1.1 release. Gameplay sources for this integration were rebased onto `B3none/cs2-retakes` commit `2fde4a9` (3.1.1), not the older local 3.0.x fork. All upstream minimum-player, autojoin, spawn/crash, plant-location and unload-config behavior is retained. This build uses the deployed net10 framework and API 1.0.374/localization 10.0.12 versions. The unchanged public shared interface retains its net8 target for existing allocator consumers. Build RetakesPlugin with .NET 10; shared/lifecycle tests also require .NET 8.
+
+Upstream `retakes_enabled` is a bool FakeConVar, default true, applied immediately. Disable now invalidates/cancels deferred gameplay callbacks, clears queue/round/editor state and visuals, cancels waiting warmup, and prevents gameplay commands. Re-enable initializes services for the current map, restores the existing Retakes configuration, rebuilds player queues and restarts the round. Disabled map starts do not initialize Retakes map services. Commands resolve the current services rather than retaining previous-map handlers. A generation gate prevents callbacks from an earlier enabled period from resurrecting.
+
+`retakes_plugin:runtime_v1` (`Func<string,Dictionary<string,string>>`) offers enable, disable, enabled and status to trusted server plugins. Status confirms enabled state and initialized map spawns; no network endpoint is added. Runtime orchestration uses late loads (`Load(false)`), never a plugin reload, so the existing true hot-reload map restart remains available for ordinary updates. The persisted confirmed mode initializes inactive Retakes on a live Surf/KZ process boot. Legacy profiles still control whether the plugin is installed in the active directory.
+
+`dotnet run --project tests/Lifecycle -c Release` tests immediate disable and stale callback generations. CI also retains formatting, locked dependencies and reproducible packages. Installation must preserve production configs, spawns and the shared provider DLL; use a controlled process stop/start when replacing a DLL whose automatic reload can change maps. Never install the old 3.0.x local build over the deployed upstream baseline.

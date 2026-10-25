@@ -7,6 +7,9 @@ public class GameSettings
     [JsonPropertyName("MaxPlayers")]
     public int MaxPlayers { get; set; } = 9;
 
+    [JsonPropertyName("MinimumPlayers")]
+    public int MinimumPlayers { get; set; } = 0;
+
     [JsonPropertyName("ShouldBreakBreakables")]
     public bool ShouldBreakBreakables { get; set; } = false;
 

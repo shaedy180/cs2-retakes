@@ -22,6 +22,9 @@ public class QueueSettings
     [JsonPropertyName("ShouldAutoJoinSpectators")]
     public bool ShouldAutoJoinSpectators { get; set; } = true;
 
+    [JsonPropertyName("ShouldAutoJoinGame")]
+    public bool ShouldAutoJoinGame { get; set; } = false;
+
     public List<QueuePriorityFlagConfig> GetPriorityFlags()
     {
         if (QueuePriorityFlag == null || QueuePriorityFlag.Count == 0)

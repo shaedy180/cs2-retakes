@@ -54,11 +54,16 @@ internal sealed class PluginTimers : IDisposable
         });
     }
 
+    internal void CancelAll()
+    {
+        foreach (var timer in _pending.ToArray()) timer.Kill();
+    }
+
     public void Dispose()
     {
         if (_disposed) return;
         _disposed = true;
-        foreach (var timer in _pending.ToArray()) timer.Kill();
+        CancelAll();
     }
 
     internal sealed class Handle(PluginTimers owner, Action callback, int reference, TimerFlags flags)
