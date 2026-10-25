@@ -21,12 +21,16 @@ internal sealed class PluginTimers : IDisposable
         ObjectDisposedException.ThrowIf(_disposed, this);
         var options = flags ?? 0;
         Handle? timer = null;
-        var reference = FunctionReference.Create((Action)(() => timer!.Invoke()),
-            (options & TimerFlags.REPEAT) != 0 ? FunctionLifetime.Permanent : FunctionLifetime.SingleUse);
-        timer = new Handle(this, callback, reference.Identifier, options);
+        // Native ownership outlives a self-cancelled callback until the queued
+        // safe-phase deletion. Never let SingleUse/Invoke release that root early.
+        var reference = FunctionReference.Create((Action)(() => timer!.Invoke()), FunctionLifetime.Permanent);
+        timer = new Handle(this, callback, reference, options);
         try
         {
-            timer.Native = NativeAPI.CreateTimer(interval, reference, (int)options);
+            // Own map cancellation too. CSS skips native map-timer cleanup if a
+            // native addon restarts the map before the first GameFrame. Forwarding
+            // STOP would give two systems conflicting ownership of this pointer.
+            timer.Native = NativeAPI.CreateTimer(interval, reference, (int)(options & ~TimerFlags.STOP_ON_MAPCHANGE));
             _pending.Add(timer);
             return timer;
         }
@@ -36,7 +40,7 @@ internal sealed class PluginTimers : IDisposable
     private void OnMapEnd()
     {
         foreach (var timer in _pending.Concat(_retiring).ToArray())
-            if ((timer.Flags & TimerFlags.STOP_ON_MAPCHANGE) != 0) timer.MapEnded();
+            if ((timer.Flags & TimerFlags.STOP_ON_MAPCHANGE) != 0) timer.Kill();
     }
 
     private void Retire(Handle timer)
@@ -66,12 +70,11 @@ internal sealed class PluginTimers : IDisposable
         CancelAll();
     }
 
-    internal sealed class Handle(PluginTimers owner, Action callback, int reference, TimerFlags flags)
+    internal sealed class Handle(PluginTimers owner, Action callback, FunctionReference reference, TimerFlags flags)
     {
         private Action? _callback = callback;
         private bool _active = true;
-        private bool _executing;
-        private bool _released;
+        private FunctionReference? _reference = reference;
         private bool _nativeAlive = true;
         internal IntPtr Native;
         internal readonly TimerFlags Flags = flags;
@@ -81,13 +84,13 @@ internal sealed class PluginTimers : IDisposable
             if ((Flags & TimerFlags.REPEAT) == 0) _nativeAlive = false;
             if (!_active) return;
             var action = _callback;
-            _executing = true;
             if ((Flags & TimerFlags.REPEAT) == 0) Deactivate();
             try { action?.Invoke(); }
             finally
             {
-                _executing = false;
-                if (!_active) ReleaseReference();
+                // Retain the actual delegate object until native code has left
+                // this callback, including cancelled repeats awaiting deletion.
+                if (!_active && !_nativeAlive) owner.Retire(this);
             }
         }
 
@@ -100,19 +103,10 @@ internal sealed class PluginTimers : IDisposable
 
         private void ReleaseReference()
         {
-            if (_released) return;
-            _released = true;
-            FunctionReference.Remove(reference);
-        }
-
-        internal void MapEnded()
-        {
-            _nativeAlive = false;
-            Deactivate();
-            owner._retiring.Remove(this);
-            // Native STOP_ON_MAPCHANGE cleanup owns deletion. Its address may
-            // already have been recycled; never KillTimer with that stale pointer.
-            if (!_executing) ReleaseReference();
+            var owned = _reference;
+            if (owned == null) return;
+            _reference = null;
+            FunctionReference.Remove(owned.Identifier);
         }
 
         public void Kill()
