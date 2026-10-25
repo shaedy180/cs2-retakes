@@ -51,7 +51,7 @@ public class AddSpawnCommand
 
         if (commandInfo.ArgCount < 2)
         {
-            commandInfo.ReplyToCommand($"{_plugin.Localizer["retakes.prefix"]} Usage: !add [T/CT] [Y/N can be planter]");
+            commandInfo.ReplyToCommand($"{_plugin.Localizer["retakes.prefix"]} Usage: !add [T/CT] [Y/N can be planter] [plant location name]");
             return;
         }
 
@@ -96,6 +96,22 @@ public class AddSpawnCommand
             return;
         }
 
+        string? plantLocation = null;
+        if (commandInfo.ArgCount > 3)
+        {
+            var plantLocationParts = new List<string>();
+            for (var argIndex = 3; argIndex < commandInfo.ArgCount; argIndex++)
+            {
+                plantLocationParts.Add(commandInfo.GetArg(argIndex));
+            }
+
+            plantLocation = string.Join(" ", plantLocationParts).Trim();
+            if (string.IsNullOrWhiteSpace(plantLocation))
+            {
+                plantLocation = null;
+            }
+        }
+
         var newSpawn = new Spawn(
             vector: player!.PlayerPawn.Value!.AbsOrigin!,
             qAngle: player!.PlayerPawn.Value!.AbsRotation!
@@ -105,6 +121,15 @@ public class AddSpawnCommand
             CanBePlanter = team == "T" && !string.IsNullOrWhiteSpace(canBePlanterInput) ? canBePlanterInput == "Y" : player.PlayerPawn.Value.InBombZoneTrigger,
             Bombsite = (Bombsite)_showSpawnsCommand.ShowingSpawnsForBombsite
         };
+
+        if (newSpawn.CanBePlanter)
+        {
+            newSpawn.PlantLocation = plantLocation;
+        }
+        else if (plantLocation != null)
+        {
+            commandInfo.ReplyToCommand($"{_plugin.Localizer["retakes.prefix"]} Plant location name ignored because this spawn can't be a planter spawn.");
+        }
 
         SpawnService.ShowSpawn(newSpawn);
 

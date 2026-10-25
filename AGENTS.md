@@ -33,3 +33,5 @@ Keep current architecture, runtime requirements, configuration, testing, release
 Done means implemented changes, appropriate tests and CI passing, production compatibility verified where relevant, both documents current, PR merged, `working-branch` fast-forwarded to `main`, effective protection verified and exactly these two branches present. Report any unmet condition accurately.
 
 Tests must use a disposable local database. Preserve migrations, player preferences, map configurations and server data. Do not set CopyPath in CI or cleanup builds.
+
+The installed Retakes gameplay baseline is the official B3none 3.1.1 release (`2fde4a9`); never replace it with the older local 3.0.x fork. Runtime integrations must preserve upstream enable/minimum-player/autojoin behavior and compile the plugin for the deployed .NET 10 runtime. The shared interface remains compatible with existing .NET 8 consumers. Production rollouts keep backend live switching disabled until the owner tests it.

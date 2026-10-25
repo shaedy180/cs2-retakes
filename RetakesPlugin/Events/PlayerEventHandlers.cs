@@ -31,16 +31,30 @@ public class PlayerEventHandlers
 
         player.ForceTeamTime = 3600.0f;
 
-        if (_plugin.Config.Queue.ShouldAutoJoinSpectators)
+        if (_plugin.Config.Queue.ShouldAutoJoinGame)
         {
-            _plugin.AddTimer(1.0f, () =>
+            _plugin.ScheduleGameplay(1.0f, () =>
             {
-                if (!PlayerHelper.IsValid(player))
+                if (!PlayerHelper.IsValid(player) || !PlayerHelper.IsConnected(player))
                 {
                     return;
                 }
 
-                player.ChangeTeam(CsTeam.Spectator);
+                _gameManager.QueueManager.AddConnectingPlayer(player);
+                _gameManager.CheckMinimumPlayers();
+                _gameManager.RestartGameIfEmpty();
+            });
+        }
+        else if (_plugin.Config.Queue.ShouldAutoJoinSpectators)
+        {
+            _plugin.ScheduleGameplay(1.0f, () =>
+            {
+                if (!PlayerHelper.IsValid(player) || !PlayerHelper.IsConnected(player))
+                {
+                    return;
+                }
+
+                PlayerHelper.TryChangeTeam(player, CsTeam.Spectator);
                 player.ExecuteClientCommand("teammenu");
             });
         }
@@ -78,7 +92,7 @@ public class PlayerEventHandlers
 
             if (!player.IsBot)
             {
-                player.ChangeTeam(CsTeam.Spectator);
+                PlayerHelper.TryChangeTeam(player, CsTeam.Spectator);
             }
             else if (!player.IsHLTV)
             {

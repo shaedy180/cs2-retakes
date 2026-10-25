@@ -12,4 +12,7 @@ public class MapConfigSettings
 
     [JsonPropertyName("EnableFallbackBombsiteAnnouncement")]
     public bool EnableFallbackBombsiteAnnouncement { get; set; } = true;
+
+    [JsonPropertyName("EnablePlantLocationAnnouncement")]
+    public bool EnablePlantLocationAnnouncement { get; set; } = false;
 }
