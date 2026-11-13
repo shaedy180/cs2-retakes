@@ -47,6 +47,7 @@ jobs:
             *.zip
             *.zip.sha256
           if-no-files-found: error
+          retention-days: 7
   release:
     if: github.event_name == 'release'
     needs: build
@@ -92,4 +93,4 @@ jobs:
           name: ${{ steps.receipt.outputs.artifact }}
           path: ci-validation.json
           if-no-files-found: error
-          retention-days: 90
+          retention-days: 14
