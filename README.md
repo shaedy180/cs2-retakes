@@ -232,3 +232,12 @@ Upstream `retakes_enabled` is a bool FakeConVar, default true, applied immediate
 ### Native timer ownership hardening (3.1.3)
 
 The isolated native-scheduler regression reproduced the old callback-root failure when a map reload happens before the first game frame. Retakes now uses the already validated safe-phase timer pool from MapChooser, retaining native delegates until actual deletion and owning map cancellation without forwarding the competing native STOP flag. `CancelAll` preserves the pool across enable/disable cycles. The nine timer lifecycle regressions run in CI alongside the activation gate test; the pre-frame case fails against the previous Retakes helper. This changes callback ownership, not gameplay timing or map/reload semantics.
+
+### Maintenance release 3.1.4
+
+This release incorporates upstream 3.1.2's CounterStrikeSharp.API 1.0.380 and
+localization abstractions 11.0.0 dependency updates into the maintained fork.
+The fork retains its mode integration and native timer ownership fixes. Existing
+operator map spawns, language files, configuration and user settings are preserved.
+Install only the plugin DLL, PDB and dependency manifest during the authorized
+server maintenance. Keep the deployed shared interface DLL byte-identical.
